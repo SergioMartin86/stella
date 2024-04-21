@@ -8,13 +8,14 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2024 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2023 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
 // this file, and for a DISCLAIMER OF ALL WARRANTIES.
 //============================================================================
 
+#include <cassert>
 #include <cmath>
 
 #include "System.hxx"
@@ -56,8 +57,6 @@ AnalogReadout::Connection Controller::read(AnalogPin pin)
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 bool Controller::save(Serializer& out) const
 {
-  try
-  {
     // Output the digital pins
     out.putBool(getPin(DigitalPin::One));
     out.putBool(getPin(DigitalPin::Two));
@@ -68,20 +67,12 @@ bool Controller::save(Serializer& out) const
     // Output the analog pins
     getPin(AnalogPin::Five).save(out);
     getPin(AnalogPin::Nine).save(out);
-  }
-  catch(...)
-  {
-    cerr << "ERROR: Controller::save() exception\n";
-    return false;
-  }
   return true;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 bool Controller::load(Serializer& in)
 {
-  try
-  {
     // Input the digital pins
     setPin(DigitalPin::One,   in.getBool());
     setPin(DigitalPin::Two,   in.getBool());
@@ -92,12 +83,6 @@ bool Controller::load(Serializer& in)
     // Input the analog pins
     getPin(AnalogPin::Five).load(in);
     getPin(AnalogPin::Nine).load(in);
-  }
-  catch(...)
-  {
-    cerr << "ERROR: Controller::load() exception\n";
-    return false;
-  }
   return true;
 }
 

@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2024 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2023 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -173,7 +173,7 @@ class Controller : public Serializable
       @param pin The pin of the controller jack to write to
       @param value The value to write to the pin
     */
-    virtual void write(DigitalPin pin, bool value) { }
+    virtual void write(DigitalPin pin, bool value) { setPin(pin, value); }
 
     /**
       Called after *all* digital pins have been written on Port A.
