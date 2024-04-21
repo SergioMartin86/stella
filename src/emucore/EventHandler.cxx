@@ -2785,8 +2785,8 @@ void EventHandler::setState(EventHandlerState state)
 
   // Inform various subsystems about the new state
   myOSystem.stateChanged(myState); // does nothing
-  myOSystem.frameBuffer().stateChanged(myState); // ignores state
-  myOSystem.frameBuffer().setCursorState(); // en/disables cursor for UI and emulation states
+  if (stella::_renderingEnabled) myOSystem.frameBuffer().stateChanged(myState); // ignores state
+  if (stella::_renderingEnabled)myOSystem.frameBuffer().setCursorState(); // en/disables cursor for UI and emulation states
   if(myOSystem.hasConsole())
     myOSystem.console().stateChanged(myState); // does nothing
 

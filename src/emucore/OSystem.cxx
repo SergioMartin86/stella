@@ -140,21 +140,6 @@ bool OSystem::initialize(const Settings::Options& options)
       << myPaletteFile.getShortPath() << "'\n";
   Logger::info(buf.str());
 
-  // NOTE: The framebuffer MUST be created before any other object!!!
-  // Get relevant information about the video hardware
-  // This must be done before any graphics context is created, since
-  // it may be needed to initialize the size of graphical objects
-  try
-  {
-    myFrameBuffer = make_unique<FrameBuffer>(*this);
-    myFrameBuffer->initialize();
-  }
-  catch(const runtime_error& e)
-  {
-    Logger::error(e.what());
-    return false;
-  }
-
   // Create the event handler for the system
   myEventHandler = MediaFactory::createEventHandler(*this);
   myEventHandler->initialize();
@@ -519,7 +504,7 @@ string OSystem::createConsole(const FSNode& rom, string_view md5sum, bool newrom
     buf << '\n' << getROMInfo(*myConsole);
     Logger::info(buf.str());
 
-    myFrameBuffer->setCursorState();
+    if (stella::_renderingEnabled) myFrameBuffer->setCursorState();
 
     myEventHandler->handleConsoleStartupEvents();
     myConsole->riot().update();
@@ -878,148 +863,73 @@ float OSystem::frameRate() const
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-double OSystem::dispatchEmulation(EmulationWorker& emulationWorker)
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+double OSystem::dispatchEmulation()
 {
+
   if (!myConsole) return 0.;
 
   TIA& tia(myConsole->tia());
   const EmulationTiming& timing = myConsole->emulationTiming();
   DispatchResult dispatchResult;
 
-  // Check whether we have a frame pending for rendering...
-  const bool framePending = tia.newFramePending();
-  // ... and copy it to the frame buffer. It is important to do this before
-  // the worker is started to avoid racing.
-  if (framePending) {
-    myFpsMeter.render(tia.framesSinceLastRender());
-    tia.renderToFrameBuffer();
+  bool framePending = false;
+  if (stella::_renderingEnabled)
+  {
+    // Check whether we have a frame pending for rendering...
+    framePending = tia.newFramePending();
+    // ... and copy it to the frame buffer. It is important to do this before
+    // the worker is started to avoid racing.
+    if (framePending) {
+      myFpsMeter.render(tia.framesSinceLastRender());
+      tia.renderToFrameBuffer();
+    }
   }
 
-  // Start emulation on a dedicated thread. It will do its own scheduling to
-  // sync 6507 and real time and will run until we stop the worker.
-  emulationWorker.start(
-    timing.cyclesPerSecond(),
-    timing.maxCyclesPerTimeslice(),
-    timing.minCyclesPerTimeslice(),
-    &dispatchResult,
-    &tia
-  );
+  tia.update(timing.maxCyclesPerTimeslice());
 
-  // Render the frame. This may block, but emulation will continue to run on
-  // the worker, so the audio pipeline is kept fed :)
-  if (framePending) myFrameBuffer->updateInEmulationMode(myFpsMeter.fps());
-
-  // Stop the worker and wait until it has finished
-  const uInt64 totalCycles = emulationWorker.stop();
-
-  // Handle the dispatch result
-  switch (dispatchResult.getStatus()) {
-    case DispatchResult::Status::ok:
-      break;
-
-    case DispatchResult::Status::debugger:
-      #ifdef DEBUGGER_SUPPORT
-       myDebugger->start(
-          dispatchResult.getMessage(),
-          dispatchResult.getAddress(),
-          dispatchResult.wasReadTrap(),
-          dispatchResult.getToolTip()
-        );
-      #endif
-
-      break;
-
-    case DispatchResult::Status::fatal:
-      #ifdef DEBUGGER_SUPPORT
-        myDebugger->startWithFatalError(dispatchResult.getMessage());
-      #else
-        cerr << dispatchResult.getMessage() << '\n';
-      #endif
-        break;
-
-    default:
-      throw runtime_error("invalid emulation dispatch result");
+  if (stella::_renderingEnabled)
+  {
+    // Render the frame. This may block, but emulation will continue to run on
+    // the worker, so the audio pipeline is kept fed :)
+    if (framePending) myFrameBuffer->updateInEmulationMode(myFpsMeter.fps());
   }
-
-  // Handle frying
-  if (dispatchResult.getStatus() == DispatchResult::Status::ok &&
-      myEventHandler->frying())
-    myConsole->fry();
 
   // Return the 6507 time used in seconds
-  return static_cast<double>(totalCycles) /
-      static_cast<double>(timing.cyclesPerSecond());
+  return 0;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+void OSystem::initializeVideo()
+{
+  // NOTE: The framebuffer MUST be created before any other object!!!
+  // Get relevant information about the video hardware
+  // This must be done before any graphics context is created, since
+  // it may be needed to initialize the size of graphical objects
+  myFrameBuffer = make_unique<FrameBuffer>(*this);
+  myFrameBuffer->initialize();
+}
+
+
 void OSystem::mainLoop()
 {
-  // 6507 time
-  time_point<high_resolution_clock> virtualTime = high_resolution_clock::now();
-  // The emulation worker
-  EmulationWorker emulationWorker;
+}
 
-  myFpsMeter.reset(TIAConstants::initialGarbageFrames);
+void OSystem::advanceFrame()
+{
+ dispatchEmulation();
+// const EmulationTiming& timing = myConsole->emulationTiming();
+// console().tia().update(timing.maxCyclesPerTimeslice());
+// printf("%u\n", console().riot().getRAM()[0x056]);
+// getchar();
+}
 
-  for(;;)
-  {
-    const bool wasEmulation = myEventHandler->state() == EventHandlerState::EMULATION;
-
-    myEventHandler->poll(TimerManager::getTicks());
-    if(myQuitLoop) break;  // Exit if the user wants to quit
-
-    if (!wasEmulation && myEventHandler->state() == EventHandlerState::EMULATION) {
-      myFpsMeter.reset();
-      virtualTime = high_resolution_clock::now();
-    }
-
-    double timesliceSeconds;  // NOLINT
-
-    if (myEventHandler->state() == EventHandlerState::EMULATION)
-      // Dispatch emulation and render frame (if applicable)
-      timesliceSeconds = dispatchEmulation(emulationWorker);
-    else if(myEventHandler->state() == EventHandlerState::PLAYBACK)
-    {
-      // Playback at emulation speed
-      timesliceSeconds = static_cast<double>(myConsole->tia().scanlinesLastFrame() * 76) /
-        static_cast<double>(myConsole->emulationTiming().cyclesPerSecond());
-      myFrameBuffer->update();
-    }
-    else
-    {
-      // Render the GUI with 60 Hz in all other modes
-      timesliceSeconds = 1. / 60.;
-      myFrameBuffer->update();
-    }
-
-    const duration<double> timeslice(timesliceSeconds);
-    virtualTime += duration_cast<high_resolution_clock::duration>(timeslice);
-    const time_point<high_resolution_clock> now = high_resolution_clock::now();
-
-    // We allow 6507 time to lag behind by one frame max
-    const double maxLag = myConsole
-      ? (
-        static_cast<double>(myConsole->emulationTiming().cyclesPerFrame()) /
-        static_cast<double>(myConsole->emulationTiming().cyclesPerSecond())
-      )
-      : 0;
-
-    if (duration_cast<duration<double>>(now - virtualTime).count() > maxLag)
-      // If 6507 time is lagging behind more than one frame we reset it to real time
-      virtualTime = now;
-    else if (virtualTime > now) {
-      // Wait until we have caught up with 6507 time
-      std::this_thread::sleep_until(virtualTime);
-    }
-  }
-
-  // Cleanup time
-#ifdef CHEATCODE_SUPPORT
-  if(myConsole)
-    myCheatManager->saveCheats(myConsole->properties().get(PropType::Cart_MD5));
-
-  myCheatManager->saveCheatDatabase();
-#endif
+void OSystem::renderFrame()
+{
+ stella::_renderToScreen = true;
+ dispatchEmulation();
+ stella::_renderToScreen = false;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

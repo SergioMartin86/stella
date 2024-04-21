@@ -52,7 +52,7 @@ class AudioSettings;
 #endif
 
 #include <chrono>
-
+#include "renderFlag.hpp"
 #include "FSNode.hxx"
 #include "FrameBufferConstants.hxx"
 #include "EventHandlerConstants.hxx"
@@ -90,6 +90,10 @@ class OSystem
       @return  Success or failure of the framebuffer creation
     */
     FBInitStatus createFrameBuffer();
+
+void initializeVideo();
+void advanceFrame();
+void renderFrame();
 
   public:
     /**
@@ -666,7 +670,7 @@ class OSystem
     */
     static string getROMInfo(const Console& console);
 
-    double dispatchEmulation(EmulationWorker& emulationWorker);
+    double dispatchEmulation();
 
     // Following constructors and assignment operators not supported
     OSystem(const OSystem&) = delete;

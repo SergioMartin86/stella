@@ -18,6 +18,7 @@
 #include "bspf.hxx"
 #include "Logger.hxx"
 
+#include "EventHandlerSDL2.hxx"
 #include "Console.hxx"
 #include "EventHandler.hxx"
 #include "OSystem.hxx"
@@ -27,7 +28,7 @@
 #include "AudioSettings.hxx"
 #include "MediaFactory.hxx"
 #include "PNGLibrary.hxx"
-
+#include "renderFlag.hpp"
 #include "FBSurface.hxx"
 #include "TIASurface.hxx"
 #include "Bezel.hxx"
@@ -410,10 +411,10 @@ void FrameBuffer::update(UpdateMode mode)
       {
         myPausedCount = static_cast<uInt32>(7 * myOSystem.frameRate());
         showTextMessage("Paused", MessagePosition::MiddleCenter);
-        renderTIA(false, shade);
+        myTIASurface->render(shade);
       }
       if(rerender)
-        renderTIA(false, shade);
+        myTIASurface->render(shade);
       break;  // EventHandlerState::PAUSE
     }
 
@@ -424,12 +425,14 @@ void FrameBuffer::update(UpdateMode mode)
       redraw |= myOSystem.optionsMenu().needsRedraw();
       if(redraw)
       {
-        renderTIA(true, true);
+        clear();
+        myTIASurface->render(true);
         myOSystem.optionsMenu().draw(forceRedraw);
       }
       else if(rerender)
       {
-        renderTIA(true, true);
+        clear();
+        myTIASurface->render(true);
         myOSystem.optionsMenu().render();
       }
       break;  // EventHandlerState::OPTIONSMENU
@@ -441,12 +444,14 @@ void FrameBuffer::update(UpdateMode mode)
       redraw |= myOSystem.commandMenu().needsRedraw();
       if(redraw)
       {
-        renderTIA(true, true);
+        clear();
+        myTIASurface->render(true);
         myOSystem.commandMenu().draw(forceRedraw);
       }
       else if(rerender)
       {
-        renderTIA(true, true);
+        clear();
+        myTIASurface->render(true);
         myOSystem.commandMenu().render();
       }
       break;  // EventHandlerState::CMDMENU
@@ -458,12 +463,14 @@ void FrameBuffer::update(UpdateMode mode)
       redraw |= myOSystem.highscoresMenu().needsRedraw();
       if(redraw)
       {
-        renderTIA(true, true);
+        clear();
+        myTIASurface->render(true);
         myOSystem.highscoresMenu().draw(forceRedraw);
       }
       else if(rerender)
       {
-        renderTIA(true, true);
+        clear();
+        myTIASurface->render(true);
         myOSystem.highscoresMenu().render();
       }
       break;  // EventHandlerState::HIGHSCORESMENU
@@ -475,7 +482,8 @@ void FrameBuffer::update(UpdateMode mode)
       redraw |= myOSystem.messageMenu().needsRedraw();
       if(redraw)
       {
-        renderTIA(true, true);
+        clear();
+        myTIASurface->render(true);
         myOSystem.messageMenu().draw(forceRedraw);
       }
       break;  // EventHandlerState::MESSAGEMENU
@@ -487,7 +495,8 @@ void FrameBuffer::update(UpdateMode mode)
       redraw |= myOSystem.plusRomsMenu().needsRedraw();
       if(redraw)
       {
-        renderTIA(true, true);
+        clear();
+        myTIASurface->render(true);
         myOSystem.plusRomsMenu().draw(forceRedraw);
       }
       break;  // EventHandlerState::PLUSROMSMENU
@@ -499,12 +508,14 @@ void FrameBuffer::update(UpdateMode mode)
       redraw |= myOSystem.timeMachine().needsRedraw();
       if(redraw)
       {
-        renderTIA();
+        clear();
+        myTIASurface->render();
         myOSystem.timeMachine().draw(forceRedraw);
       }
       else if(rerender)
       {
-        renderTIA();
+        clear();
+        myTIASurface->render();
         myOSystem.timeMachine().render();
       }
       break;  // EventHandlerState::TIMEMACHINE
@@ -536,7 +547,7 @@ void FrameBuffer::update(UpdateMode mode)
       }
       redraw |= success;
       if(redraw)
-        renderTIA(false);
+        myTIASurface->render();
 
       // Stop playback mode at the end of the state buffer
       // and switch to Time Machine or Pause mode
@@ -598,21 +609,10 @@ void FrameBuffer::updateInEmulationMode(float framesPerSecond)
   // We don't worry about selective rendering here; the rendering
   // always happens at the full framerate
 
-  renderTIA();
-
-  // Show frame statistics
-  if(myStatsMsg.enabled)
-    drawFrameStats(framesPerSecond);
-
+  clear();  // TODO - test this: it may cause slowdowns on older systems
+  myTIASurface->render();
   myLastScanlines = myOSystem.console().tia().frameBufferScanlinesLastFrame();
-  myPausedCount = 0;
-
-  // Draw any pending messages
-  if(myMsg.enabled)
-    drawMessage();
-
-  // Push buffers to screen
-  myBackend->renderToScreen();
+  if (stella::_renderToScreen) myBackend->renderToScreen();
 }
 
 #ifdef GUI_SUPPORT
@@ -1123,7 +1123,6 @@ void FrameBuffer::setFullscreen(bool enable)
       break; // continue with processing (aka, allow a mode switch)
     case EventHandlerState::DEBUGGER:
     case EventHandlerState::LAUNCHER:
-      if(myOSystem.eventHandler().overlay().baseDialogIsActive())
         break; // allow a mode switch when there is only one dialog
       [[fallthrough]];
     default:

@@ -62,6 +62,7 @@
 #include "DevSettingsHandler.hxx"
 #include "frame-manager/FrameManager.hxx"
 #include "frame-manager/FrameLayoutDetector.hxx"
+#include "renderFlag.hpp"
 
 #ifdef CHEATCODE_SUPPORT
   #include "CheatManager.hxx"
@@ -179,7 +180,7 @@ Console::Console(OSystem& osystem, unique_ptr<Cartridge>& cart,
 
   // Pause audio and clear framebuffer while autodetection runs
   myOSystem.sound().pause(true);
-  myOSystem.frameBuffer().clear();
+  if (stella::_renderingEnabled) myOSystem.frameBuffer().clear();
 
   if(myDisplayFormat == "AUTO" || myOSystem.settings().getBool("rominfo"))
   {
@@ -725,6 +726,8 @@ void Console::setProperties(const Properties& props)
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 FBInitStatus Console::initializeVideo(bool full)
 {
+  if (stella::_renderingEnabled == false) return FBInitStatus::Success; 
+
   FBInitStatus fbstatus = FBInitStatus::Success;
 
   if(full)
