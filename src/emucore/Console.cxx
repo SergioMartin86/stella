@@ -125,8 +125,12 @@ Console::Console(OSystem& osystem, unique_ptr<Cartridge>& cart,
   my6502 = make_unique<M6502>(myOSystem.settings());
   myRiot = make_unique<M6532>(*this, myOSystem.settings());
 
-  const TIA::onPhosphorCallback callback = [&frameBuffer = this->myOSystem.frameBuffer()](bool enable)
+  const TIA::onPhosphorCallback callback = [&osystem = this->myOSystem](bool enable)
   {
+    // In headless/unattended emulation there is no frame buffer, so skip the
+    // auto-phosphor visual notification entirely (it only affects the display).
+    if (!osystem.hasFrameBuffer()) return;
+    auto& frameBuffer = osystem.frameBuffer();
     frameBuffer.tiaSurface().enablePhosphor(enable);
 #ifdef DEBUG_BUILD
     ostringstream msg;
@@ -305,9 +309,15 @@ void Console::autodetectFrameLayout(bool reset)
   for(int i = 0; i < 20; ++i)
     myTIA->update();
 
-  FrameLayoutDetector::simulateInput(*myRiot, myOSystem.eventHandler(), true);
+#ifdef _JAFFAR_PLAYER
+  if (stella::_renderingEnabled) FrameLayoutDetector::simulateInput(*myRiot, myOSystem.eventHandler(), true);
+#endif
+
   myTIA->update();
-  FrameLayoutDetector::simulateInput(*myRiot, myOSystem.eventHandler(), false);
+
+#ifdef _JAFFAR_PLAYER
+  if (stella::_renderingEnabled) FrameLayoutDetector::simulateInput(*myRiot, myOSystem.eventHandler(), false);
+#endif
 
   for(int i = 0; i < 40; ++i)
     myTIA->update();
